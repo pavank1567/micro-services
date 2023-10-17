@@ -22,15 +22,15 @@ public class OrderService {
 
     private final OrderRepo orderRepo;
 
-    private final WebClient webClient;
+    private final WebClient.Builder webClientBuilder;
 
-    private final String INVENTORY_URL = "http://localhost:8082/api/inventory";
+    private final String INVENTORY_URL = "http://inventory-service/api/inventory";
 
-    private final String INVENTORY_POST_URL = "http://localhost:8082/api/inventory/order";
+    private final String INVENTORY_POST_URL = "http://inventory-service/api/inventory/order";
 
-    public OrderService(OrderRepo orderRepo, WebClient webClient) {
+    public OrderService(OrderRepo orderRepo, WebClient.Builder webClientBuilder) {
         this.orderRepo = orderRepo;
-        this.webClient = webClient;
+        this.webClientBuilder = webClientBuilder;
     }
 
     public void placeOrder(OrderRequest request) {
@@ -60,7 +60,7 @@ public class OrderService {
 
         //get request only using skucodes
         InventoryResponse[] inventoryRes =
-                webClient.get()
+                webClientBuilder.build().get()
                 .uri(INVENTORY_URL,
                         uriBuilder -> uriBuilder.queryParam("skuCode",skuCodes)
                                 .build())
@@ -70,7 +70,7 @@ public class OrderService {
 
         //post reqpuest using skucodes and quantity
 
-        InventoryResponse[] invPostRes = webClient.post()
+        InventoryResponse[] invPostRes = webClientBuilder.build().post()
                 .uri(INVENTORY_URL)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(requests)
@@ -84,7 +84,7 @@ public class OrderService {
 
         if(isAllInStock) {
             orderRepo.save(newOrder);
-            webClient.post()
+            webClientBuilder.build().post()
                     .uri(INVENTORY_POST_URL)
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(requests)
