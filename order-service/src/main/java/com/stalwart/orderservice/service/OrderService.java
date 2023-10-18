@@ -33,7 +33,7 @@ public class OrderService {
         this.webClientBuilder = webClientBuilder;
     }
 
-    public void placeOrder(OrderRequest request) {
+    public String placeOrder(OrderRequest request) {
         List<OrderLineItems> orderLineItemsList =
                 request.orderLineItemsDTOList()
                                 .stream()
@@ -91,6 +91,8 @@ public class OrderService {
                     .retrieve()
                     .bodyToMono(Void.class)
                     .block();
+
+            return "Order Placed Successfully!";
 
         }
         else

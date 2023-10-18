@@ -20,7 +20,12 @@ public class InventoryService {
         this.inventoryRepository = inventoryRepository;
     }
 
-    public List<InventoryResponse> isInStock(List<String> skuCode){
+//    @SneakyThrows
+    public List<InventoryResponse> isInStock(List<String> skuCode) {
+        //To check timelimitor is working or not
+//        log.info("Wait started");
+//        Thread.sleep(10000);
+//        log.info("Wait ended");
         return inventoryRepository.findBySkuCodeIn(skuCode)
                 .stream()
                 .map(inventory ->
