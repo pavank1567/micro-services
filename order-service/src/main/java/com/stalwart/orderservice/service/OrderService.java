@@ -8,6 +8,8 @@ import com.stalwart.orderservice.dto.OrderRequest;
 import com.stalwart.orderservice.exceptions.ItemsNAException;
 import com.stalwart.orderservice.model.Order;
 import com.stalwart.orderservice.model.OrderLineItems;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -28,9 +30,12 @@ public class OrderService {
 
     private final String INVENTORY_POST_URL = "http://inventory-service/api/inventory/order";
 
-    public OrderService(OrderRepo orderRepo, WebClient.Builder webClientBuilder) {
+    private final Tracer tracer;
+
+    public OrderService(OrderRepo orderRepo, WebClient.Builder webClientBuilder, Tracer tracer) {
         this.orderRepo = orderRepo;
         this.webClientBuilder = webClientBuilder;
+        this.tracer = tracer;
     }
 
     public String placeOrder(OrderRequest request) {
@@ -58,45 +63,54 @@ public class OrderService {
                         .build())
                 .collect(Collectors.toList());
 
-        //get request only using skucodes
-        InventoryResponse[] inventoryRes =
-                webClientBuilder.build().get()
-                .uri(INVENTORY_URL,
-                        uriBuilder -> uriBuilder.queryParam("skuCode",skuCodes)
-                                .build())
-                .retrieve()
-                .bodyToMono(InventoryResponse[].class)
-                .block();
 
-        //post reqpuest using skucodes and quantity
+        Span inventoryServiceLookup = tracer.nextSpan().name("InventoryServiceLookup");
+        try(Tracer.SpanInScope spanInScope = tracer.withSpan(inventoryServiceLookup.start())){
+//get request only using skucodes
+            InventoryResponse[] inventoryRes =
+                    webClientBuilder.build().get()
+                            .uri(INVENTORY_URL,
+                                    uriBuilder -> uriBuilder.queryParam("skuCode",skuCodes)
+                                            .build())
+                            .retrieve()
+                            .bodyToMono(InventoryResponse[].class)
+                            .block();
 
-        InventoryResponse[] invPostRes = webClientBuilder.build().post()
-                .uri(INVENTORY_URL)
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(requests)
-                .retrieve()
-                .bodyToMono(InventoryResponse[].class)
-                .block();
+            //post reqpuest using skucodes and quantity
 
-//        boolean isAllInStock = Arrays.stream(inventoryRes).sequential().allMatch(InventoryResponse::isInStock);
-
-        boolean isAllInStock = Arrays.stream(invPostRes).sequential().allMatch(InventoryResponse::isInStock);
-
-        if(isAllInStock) {
-            orderRepo.save(newOrder);
-            webClientBuilder.build().post()
-                    .uri(INVENTORY_POST_URL)
+            InventoryResponse[] invPostRes = webClientBuilder.build().post()
+                    .uri(INVENTORY_URL)
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(requests)
                     .retrieve()
-                    .bodyToMono(Void.class)
+                    .bodyToMono(InventoryResponse[].class)
                     .block();
 
-            return "Order Placed Successfully!";
+//        boolean isAllInStock = Arrays.stream(inventoryRes).sequential().allMatch(InventoryResponse::isInStock);
 
+            boolean isAllInStock = Arrays.stream(invPostRes).sequential().allMatch(InventoryResponse::isInStock);
+
+            if(isAllInStock) {
+                orderRepo.save(newOrder);
+                webClientBuilder.build().post()
+                        .uri(INVENTORY_POST_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .bodyValue(requests)
+                        .retrieve()
+                        .bodyToMono(Void.class)
+                        .block();
+
+                return "Order Placed Successfully!";
+
+            }
+            else
+                throw new ItemsNAException("Items out of stock");
+
+        } finally {
+            inventoryServiceLookup.end();
         }
-        else
-            throw new ItemsNAException("Items out of stock");
+
+
     }
 
     private OrderLineItems mapToDTO(OrderLineItemsDTO orderLineItemsDTO) {
