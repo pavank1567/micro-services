@@ -5,12 +5,14 @@ import com.stalwart.orderservice.dto.InventoryRequest;
 import com.stalwart.orderservice.dto.InventoryResponse;
 import com.stalwart.orderservice.dto.OrderLineItemsDTO;
 import com.stalwart.orderservice.dto.OrderRequest;
+import com.stalwart.orderservice.event.OrderPlacedEvent;
 import com.stalwart.orderservice.exceptions.ItemsNAException;
 import com.stalwart.orderservice.model.Order;
 import com.stalwart.orderservice.model.OrderLineItems;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
 import org.springframework.http.MediaType;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -32,10 +34,13 @@ public class OrderService {
 
     private final Tracer tracer;
 
-    public OrderService(OrderRepo orderRepo, WebClient.Builder webClientBuilder, Tracer tracer) {
+    private final KafkaTemplate<String,OrderPlacedEvent> kafkaTemplate;
+
+    public OrderService(OrderRepo orderRepo, WebClient.Builder webClientBuilder, Tracer tracer, KafkaTemplate kafkaTemplate) {
         this.orderRepo = orderRepo;
         this.webClientBuilder = webClientBuilder;
         this.tracer = tracer;
+        this.kafkaTemplate = kafkaTemplate;
     }
 
     public String placeOrder(OrderRequest request) {
@@ -92,6 +97,7 @@ public class OrderService {
 
             if(isAllInStock) {
                 orderRepo.save(newOrder);
+                kafkaTemplate.send("notification-topic", new OrderPlacedEvent(newOrder.getOrderNumber(), "pavank1567@gmail.com"));
                 webClientBuilder.build().post()
                         .uri(INVENTORY_POST_URL)
                         .contentType(MediaType.APPLICATION_JSON)
